@@ -156,6 +156,49 @@ namespace Test.Integration
             Assert.Equal((uint)1, await _channel.QueuePurgeAsync(q));
         }
 
+        [Fact]
+        public async Task TestReadOnlySequenceMultiSegmentDisposableBody()
+        {
+            const int segmentSize = 512;
+
+            QueueDeclareOk q = await _channel.QueueDeclareAsync(string.Empty, false, false, true);
+
+            var first = new DisposableByteSegment(GetRandomBody(segmentSize));
+            var last = first.Append(GetRandomBody(segmentSize));
+            var body = new ReadOnlySequence<byte>(first, 0, last, segmentSize);
+
+            Assert.False(body.IsSingleSegment);
+
+            await _channel.BasicPublishAsync(string.Empty, q, mandatory: true, body: body);
+
+            Assert.Equal((uint)1, await _channel.QueuePurgeAsync(q));
+            Assert.True(first.Disposed);
+            Assert.True(last.Disposed);
+        }
+
+        private sealed class DisposableByteSegment : ReadOnlySequenceSegment<byte>, IDisposable
+        {
+            public DisposableByteSegment(ReadOnlyMemory<byte> memory)
+            {
+                Memory = memory;
+            }
+
+            public DisposableByteSegment Append(ReadOnlyMemory<byte> memory)
+            {
+                var next = new DisposableByteSegment(memory) { RunningIndex = RunningIndex + Memory.Length };
+                Next = next;
+                return next;
+            }
+
+            public bool Disposed { get; private set; }
+
+            public void Dispose()
+            {
+                Disposed = true;
+                (Next as IDisposable)?.Dispose();
+            }
+        }
+
         private sealed class ByteSegment : ReadOnlySequenceSegment<byte>
         {
             public ByteSegment(ReadOnlyMemory<byte> memory)

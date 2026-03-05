@@ -197,7 +197,26 @@ namespace RabbitMQ.Client.Impl
                 return SerializeToFrames(ref method, ref header, body.First, channelNumber, maxBodyPayloadBytes);
             }
 
-            // Build a chain of owned segments — avoids a single large contiguous copy
+            int framingSize = Method.FrameSize + Header.FrameSize +
+                              method.GetRequiredBufferSize() + header.GetRequiredBufferSize();
+            int bodyFramesCount = GetBodyFrameCount(maxBodyPayloadBytes, bodyLength);
+            int totalSize = framingSize + bodyLength + (BodySegment.FrameSize * bodyFramesCount);
+
+            IMemoryOwner<byte> buffer = MemoryPool<byte>.Shared.Rent(framingSize);
+            Span<byte> bufferSpan = buffer.Memory.Span;
+            int offset = Method.WriteTo(bufferSpan, channelNumber, ref method);
+            offset += Header.WriteTo(bufferSpan.Slice(offset), channelNumber, ref header, bodyLength);
+
+            System.Diagnostics.Debug.Assert(offset == framingSize, $"Serialized to wrong size, expect {framingSize}, offset {offset}");
+
+            // If the caller's segments implement IDisposable we can take ownership of the chain
+            // as-is — no copy needed. Disposal chains via Next as IDisposable (same convention
+            // as OwnedBodySegment). Fall back to a per-segment copy for unknown memory.
+            if (body.Start.GetObject() is IDisposable firstSegmentDisposable)
+            {
+                return new OutgoingFrame(buffer, framingSize, body, firstSegmentDisposable, bodyLength, channelNumber, maxBodyPayloadBytes, totalSize);
+            }
+
             OwnedBodySegment? head = null, tail = null;
             long runningIndex = 0;
             foreach (ReadOnlyMemory<byte> segment in body)
@@ -220,18 +239,6 @@ namespace RabbitMQ.Client.Impl
                 }
                 tail = seg;
             }
-
-            int framingSize = Method.FrameSize + Header.FrameSize +
-                              method.GetRequiredBufferSize() + header.GetRequiredBufferSize();
-            int bodyFramesCount = GetBodyFrameCount(maxBodyPayloadBytes, bodyLength);
-            int totalSize = framingSize + bodyLength + (BodySegment.FrameSize * bodyFramesCount);
-
-            IMemoryOwner<byte> buffer = MemoryPool<byte>.Shared.Rent(framingSize);
-            Span<byte> bufferSpan = buffer.Memory.Span;
-            int offset = Method.WriteTo(bufferSpan, channelNumber, ref method);
-            offset += Header.WriteTo(bufferSpan.Slice(offset), channelNumber, ref header, bodyLength);
-
-            System.Diagnostics.Debug.Assert(offset == framingSize, $"Serialized to wrong size, expect {framingSize}, offset {offset}");
 
             return new OutgoingFrame(buffer, framingSize, head!, tail!, bodyLength, channelNumber, maxBodyPayloadBytes, totalSize);
         }
