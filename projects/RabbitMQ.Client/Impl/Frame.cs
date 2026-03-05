@@ -197,9 +197,43 @@ namespace RabbitMQ.Client.Impl
                 return SerializeToFrames(ref method, ref header, body.First, channelNumber, maxBodyPayloadBytes);
             }
 
-            IMemoryOwner<byte> bodyCopy = MemoryPool<byte>.Shared.Rent(bodyLength);
-            body.CopyTo(bodyCopy.Memory.Span);
-            return SerializeToFrames(ref method, ref header, bodyCopy, bodyLength, channelNumber, maxBodyPayloadBytes);
+            // Build a chain of owned segments — avoids a single large contiguous copy
+            OwnedBodySegment? head = null, tail = null;
+            long runningIndex = 0;
+            foreach (ReadOnlyMemory<byte> segment in body)
+            {
+                if (segment.IsEmpty)
+                {
+                    continue;
+                }
+                IMemoryOwner<byte> rental = MemoryPool<byte>.Shared.Rent(segment.Length);
+                segment.CopyTo(rental.Memory);
+                var seg = new OwnedBodySegment(rental, segment.Length, runningIndex);
+                runningIndex += segment.Length;
+                if (head is null)
+                {
+                    head = seg;
+                }
+                else
+                {
+                    tail!.SetNext(seg);
+                }
+                tail = seg;
+            }
+
+            int framingSize = Method.FrameSize + Header.FrameSize +
+                              method.GetRequiredBufferSize() + header.GetRequiredBufferSize();
+            int bodyFramesCount = GetBodyFrameCount(maxBodyPayloadBytes, bodyLength);
+            int totalSize = framingSize + bodyLength + (BodySegment.FrameSize * bodyFramesCount);
+
+            IMemoryOwner<byte> buffer = MemoryPool<byte>.Shared.Rent(framingSize);
+            Span<byte> bufferSpan = buffer.Memory.Span;
+            int offset = Method.WriteTo(bufferSpan, channelNumber, ref method);
+            offset += Header.WriteTo(bufferSpan.Slice(offset), channelNumber, ref header, bodyLength);
+
+            System.Diagnostics.Debug.Assert(offset == framingSize, $"Serialized to wrong size, expect {framingSize}, offset {offset}");
+
+            return new OutgoingFrame(buffer, framingSize, head!, tail!, bodyLength, channelNumber, maxBodyPayloadBytes, totalSize);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

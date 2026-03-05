@@ -1,4 +1,4 @@
-﻿// This source code is dual-licensed under the Apache License, version
+// This source code is dual-licensed under the Apache License, version
 // 2.0, and the Mozilla Public License, version 2.0.
 //
 // The APL v2.0:
@@ -32,10 +32,32 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using RabbitMQ.Client.Util;
 using static RabbitMQ.Client.Impl.Framing;
 
 namespace RabbitMQ.Client
 {
+    internal sealed class OwnedBodySegment : ReadOnlySequenceSegment<byte>, IDisposable
+    {
+        private readonly IMemoryOwner<byte> _owner;
+
+        internal OwnedBodySegment(IMemoryOwner<byte> owner, int length, long runningIndex)
+        {
+            _owner = owner;
+            Memory = owner.Memory.Slice(0, length);
+            RunningIndex = runningIndex;
+        }
+
+        internal void SetNext(OwnedBodySegment next) => Next = next;
+
+        public void Dispose()
+        {
+            _owner.Dispose();
+            (Next as IDisposable)?.Dispose();
+        }
+    }
+
     internal struct OutgoingFrame : IDisposable
     {
         private IMemoryOwner<byte>? _methodAndHeader;
@@ -44,6 +66,8 @@ namespace RabbitMQ.Client
         private readonly int _bodyLength;
         private readonly int _maxBodyPayloadBytes;
         private readonly ushort _channelNumber;
+        private OwnedBodySegment? _bodyHead;
+        private OwnedBodySegment? _bodyTail;
 
         internal OutgoingFrame(
             IMemoryOwner<byte> methodAndHeader,
@@ -55,6 +79,8 @@ namespace RabbitMQ.Client
             _bodyLength = 0;
             _channelNumber = 0;
             _maxBodyPayloadBytes = 0;
+            _bodyHead = null;
+            _bodyTail = null;
             Size = methodAndHeaderLength;
         }
 
@@ -73,6 +99,29 @@ namespace RabbitMQ.Client
             _bodyLength = bodyLength;
             _channelNumber = channelNumber;
             _maxBodyPayloadBytes = maxBodyPayloadBytes;
+            _bodyHead = null;
+            _bodyTail = null;
+            Size = totalSize;
+        }
+
+        internal OutgoingFrame(
+            IMemoryOwner<byte> methodAndHeader,
+            int methodAndHeaderLength,
+            OwnedBodySegment bodyHead,
+            OwnedBodySegment bodyTail,
+            int bodyLength,
+            ushort channelNumber,
+            int maxBodyPayloadBytes,
+            int totalSize)
+        {
+            _methodAndHeader = methodAndHeader;
+            _methodAndHeaderLength = methodAndHeaderLength;
+            _body = null;
+            _bodyLength = bodyLength;
+            _channelNumber = channelNumber;
+            _maxBodyPayloadBytes = maxBodyPayloadBytes;
+            _bodyHead = bodyHead;
+            _bodyTail = bodyTail;
             Size = totalSize;
         }
 
@@ -89,18 +138,56 @@ namespace RabbitMQ.Client
                 return;
             }
 
-            Debug.Assert(_body is not null);
-            ReadOnlySpan<byte> bodySpan = _body!.Memory.Span.Slice(0, _bodyLength);
-            int remainingBodyBytes = bodySpan.Length;
-            int bodyOffset = 0;
-
-            while (remainingBodyBytes > 0)
+            if (_bodyHead is not null)
             {
-                int payloadSize = remainingBodyBytes > _maxBodyPayloadBytes ? _maxBodyPayloadBytes : remainingBodyBytes;
-                BodySegment.WriteTo(writer, _channelNumber, bodySpan.Slice(bodyOffset, payloadSize));
-                remainingBodyBytes -= payloadSize;
-                bodyOffset += payloadSize;
+                var sequence = new ReadOnlySequence<byte>(_bodyHead, 0, _bodyTail!, _bodyTail!.Memory.Length);
+                int remaining = _bodyLength;
+                SequencePosition position = sequence.Start;
+
+                while (remaining > 0)
+                {
+                    int framePayload = remaining > _maxBodyPayloadBytes ? _maxBodyPayloadBytes : remaining;
+                    WriteBodyFrame(writer, _channelNumber, sequence.Slice(position, framePayload));
+                    position = sequence.GetPosition(framePayload, position);
+                    remaining -= framePayload;
+                }
             }
+            else
+            {
+                Debug.Assert(_body is not null);
+                ReadOnlySpan<byte> bodySpan = _body!.Memory.Span.Slice(0, _bodyLength);
+                int remainingBodyBytes = bodySpan.Length;
+                int bodyOffset = 0;
+
+                while (remainingBodyBytes > 0)
+                {
+                    int payloadSize = remainingBodyBytes > _maxBodyPayloadBytes ? _maxBodyPayloadBytes : remainingBodyBytes;
+                    BodySegment.WriteTo(writer, _channelNumber, bodySpan.Slice(bodyOffset, payloadSize));
+                    remainingBodyBytes -= payloadSize;
+                    bodyOffset += payloadSize;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void WriteBodyFrame(IBufferWriter<byte> writer, ushort channel, ReadOnlySequence<byte> payload)
+        {
+            int payloadLength = (int)payload.Length;
+
+            Span<byte> header = writer.GetSpan(7);
+            header[0] = Constants.FrameBody;
+            NetworkOrderSerializer.WriteUInt16(ref header.GetOffset(1), channel);
+            NetworkOrderSerializer.WriteUInt32(ref header.GetOffset(3), (uint)payloadLength);
+            writer.Advance(7);
+
+            foreach (ReadOnlyMemory<byte> segment in payload)
+            {
+                writer.Write(segment.Span);
+            }
+
+            Span<byte> end = writer.GetSpan(1);
+            end[0] = Constants.FrameEnd;
+            writer.Advance(1);
         }
 
         public void Dispose()
@@ -113,6 +200,9 @@ namespace RabbitMQ.Client
                 _methodAndHeader = default;
                 _body?.Dispose();
                 _body = null;
+                _bodyHead?.Dispose();
+                _bodyHead = null;
+                _bodyTail = null;
             }
         }
     }
