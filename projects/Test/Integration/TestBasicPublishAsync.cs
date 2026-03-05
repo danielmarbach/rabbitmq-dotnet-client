@@ -138,6 +138,39 @@ namespace Test.Integration
             Assert.True(owner.Disposed);
         }
 
+        [Fact]
+        public async Task TestReadOnlySequenceMultiSegmentBody()
+        {
+            const int segmentSize = 512;
+
+            QueueDeclareOk q = await _channel.QueueDeclareAsync(string.Empty, false, false, true);
+
+            var first = new ByteSegment(GetRandomBody(segmentSize));
+            var last = first.Append(GetRandomBody(segmentSize));
+            var body = new ReadOnlySequence<byte>(first, 0, last, segmentSize);
+
+            Assert.False(body.IsSingleSegment);
+
+            await _channel.BasicPublishAsync(string.Empty, q, mandatory: true, body: body);
+
+            Assert.Equal((uint)1, await _channel.QueuePurgeAsync(q));
+        }
+
+        private sealed class ByteSegment : ReadOnlySequenceSegment<byte>
+        {
+            public ByteSegment(ReadOnlyMemory<byte> memory)
+            {
+                Memory = memory;
+            }
+
+            public ByteSegment Append(ReadOnlyMemory<byte> memory)
+            {
+                var next = new ByteSegment(memory) { RunningIndex = RunningIndex + Memory.Length };
+                Next = next;
+                return next;
+            }
+        }
+
         private class TrackedMemoryOwner : IMemoryOwner<byte>
         {
             public TrackedMemoryOwner(byte[] content)
