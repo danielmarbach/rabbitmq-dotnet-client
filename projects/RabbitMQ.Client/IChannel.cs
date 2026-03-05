@@ -269,6 +269,42 @@ namespace RabbitMQ.Client
             where TProperties : IReadOnlyBasicProperties, IAmqpHeader;
 
         /// <summary>
+        /// Asynchronously publishes a message.
+        /// </summary>
+        /// <param name="exchange">The exchange.</param>
+        /// <param name="routingKey">The routing key.</param>
+        /// <param name="mandatory">If set to <c>true</c>, the message must route to a queue.</param>
+        /// <param name="basicProperties">The message properties.</param>
+        /// <param name="body">The message body.</param>
+        /// <param name="cancellationToken">CancellationToken for this operation.</param>
+        /// <remarks>
+        /// Routing key must be shorter than 255 bytes.
+        /// Throws <see cref="Exceptions.PublishException"/> if a nack or basic.return is returned for the message.
+        /// </remarks>
+        ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey,
+            bool mandatory, TProperties basicProperties, ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default)
+            where TProperties : IReadOnlyBasicProperties, IAmqpHeader;
+
+        /// <summary>
+        /// Asynchronously publishes a message.
+        /// </summary>
+        /// <param name="exchange">The exchange.</param>
+        /// <param name="routingKey">The routing key.</param>
+        /// <param name="mandatory">If set to <c>true</c>, the message must route to a queue.</param>
+        /// <param name="basicProperties">The message properties.</param>
+        /// <param name="body">The message body.</param>
+        /// <param name="cancellationToken">CancellationToken for this operation.</param>
+        /// <remarks>
+        /// Routing key must be shorter than 255 bytes.
+        /// Throws <see cref="Exceptions.PublishException"/> if a nack or basic.return is returned for the message.
+        /// </remarks>
+        ValueTask BasicPublishAsync<TProperties>(CachedString exchange, CachedString routingKey,
+            bool mandatory, TProperties basicProperties, ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default)
+            where TProperties : IReadOnlyBasicProperties, IAmqpHeader;
+
+        /// <summary>
         /// Configures QoS parameters of the Basic content-class.
         /// </summary>
         /// <param name="prefetchSize">Size of the prefetch in bytes.</param>

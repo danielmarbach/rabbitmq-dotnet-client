@@ -106,6 +106,38 @@ namespace Test.Integration
             Assert.True(body.Disposed);
         }
 
+        [Fact]
+        public async Task TestReadOnlySequenceBody()
+        {
+            const int size = 1024;
+
+            QueueDeclareOk q = await _channel.QueueDeclareAsync(string.Empty, false, false, true);
+            var body = new ReadOnlySequence<byte>(GetRandomBody(size));
+
+            await _channel.BasicPublishAsync(string.Empty, q, mandatory: true, body: body);
+
+            Assert.Equal((uint)1, await _channel.QueuePurgeAsync(q));
+        }
+
+        [Fact]
+        public async Task TestReadOnlySequenceFromMemoryOwnerBody()
+        {
+            const int size = 1024;
+
+            QueueDeclareOk q = await _channel.QueueDeclareAsync(string.Empty, false, false, true);
+            var owner = new TrackedMemoryOwner(GetRandomBody(size));
+            var body = new ReadOnlySequence<byte>(owner.Memory);
+
+            await _channel.BasicPublishAsync(string.Empty, q, mandatory: true, body: body);
+
+            Assert.Equal((uint)1, await _channel.QueuePurgeAsync(q));
+            // Unlike the IMemoryOwner<byte> overload, the channel copies the data and does not
+            // take ownership — the caller is still responsible for disposing
+            Assert.False(owner.Disposed);
+            owner.Dispose();
+            Assert.True(owner.Disposed);
+        }
+
         private class TrackedMemoryOwner : IMemoryOwner<byte>
         {
             public TrackedMemoryOwner(byte[] content)

@@ -81,6 +81,24 @@ namespace RabbitMQ.Client.Impl
             return BasicPublishCoreAsync(cmd, basicProperties, body, bodyLength, exchange.Value, routingKey.Value, cancellationToken);
         }
 
+        public ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey,
+            bool mandatory, TProperties basicProperties, ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default)
+            where TProperties : IReadOnlyBasicProperties, IAmqpHeader
+        {
+            var cmd = new BasicPublish(exchange, routingKey, mandatory, default);
+            return BasicPublishCoreAsync(cmd, basicProperties, body, (int)body.Length, exchange, routingKey, cancellationToken);
+        }
+
+        public ValueTask BasicPublishAsync<TProperties>(CachedString exchange, CachedString routingKey,
+            bool mandatory, TProperties basicProperties, ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default)
+            where TProperties : IReadOnlyBasicProperties, IAmqpHeader
+        {
+            var cmd = new BasicPublishMemory(exchange.Bytes, routingKey.Bytes, mandatory, default);
+            return BasicPublishCoreAsync(cmd, basicProperties, body, (int)body.Length, exchange.Value, routingKey.Value, cancellationToken);
+        }
+
         private async ValueTask BasicPublishCoreAsync<TMethod, TProperties>(
             TMethod cmd, TProperties basicProperties, ReadOnlyMemory<byte> body, int bodySize,
             string? exchange, string? routingKey, CancellationToken cancellationToken)
@@ -165,6 +183,58 @@ namespace RabbitMQ.Client.Impl
                 else
                 {
                     await ModelSendAsync(in cmd, in props, body, bodyLength, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                bool exceptionWasHandled =
+                    MaybeHandleExceptionWithEnabledPublisherConfirmations(publisherConfirmationInfo, ex);
+                if (!exceptionWasHandled)
+                {
+                    throw;
+                }
+            }
+            finally
+            {
+                MaybeReleasePublisherConfirmationLock(lease);
+                await MaybeEndPublisherConfirmationTrackingAsync(publisherConfirmationInfo, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private async ValueTask BasicPublishCoreAsync<TMethod, TProperties>(
+            TMethod cmd, TProperties basicProperties, ReadOnlySequence<byte> body, int bodySize,
+            string? exchange, string? routingKey, CancellationToken cancellationToken)
+            where TMethod : struct, IOutgoingAmqpMethod
+            where TProperties : IReadOnlyBasicProperties, IAmqpHeader
+        {
+            PublisherConfirmationInfo? publisherConfirmationInfo = null;
+            RateLimitLease? lease =
+                await MaybeAcquirePublisherConfirmationLockAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            try
+            {
+                publisherConfirmationInfo = MaybeStartPublisherConfirmationTracking();
+
+                await MaybeEnforceFlowControlAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                using Activity? sendActivity = RabbitMQActivitySource.PublisherHasListeners
+                    ? RabbitMQActivitySource.BasicPublish(routingKey, exchange, bodySize, basicProperties)
+                    : default;
+
+                ulong publishSequenceNumber = publisherConfirmationInfo?.PublishSequenceNumber ?? 0;
+
+                BasicProperties? props = PopulateBasicPropertiesHeaders(basicProperties, sendActivity, publishSequenceNumber);
+                if (props is null)
+                {
+                    await ModelSendAsync(in cmd, in basicProperties, body, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    await ModelSendAsync(in cmd, in props, body, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }

@@ -187,6 +187,22 @@ namespace RabbitMQ.Client.Impl
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static OutgoingFrame SerializeToFrames<TMethod, THeader>(ref TMethod method, ref THeader header, ReadOnlySequence<byte> body, ushort channelNumber, int maxBodyPayloadBytes)
+            where TMethod : struct, IOutgoingAmqpMethod
+            where THeader : IAmqpHeader
+        {
+            int bodyLength = (int)body.Length;
+            if (body.IsSingleSegment)
+            {
+                return SerializeToFrames(ref method, ref header, body.First, channelNumber, maxBodyPayloadBytes);
+            }
+
+            IMemoryOwner<byte> bodyCopy = MemoryPool<byte>.Shared.Rent(bodyLength);
+            body.CopyTo(bodyCopy.Memory.Span);
+            return SerializeToFrames(ref method, ref header, bodyCopy, bodyLength, channelNumber, maxBodyPayloadBytes);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static OutgoingFrame SerializeToFrames<TMethod, THeader>(ref TMethod method, ref THeader header, IMemoryOwner<byte> body, int bodyLength, ushort channelNumber, int maxBodyPayloadBytes)
             where TMethod : struct, IOutgoingAmqpMethod
             where THeader : IAmqpHeader

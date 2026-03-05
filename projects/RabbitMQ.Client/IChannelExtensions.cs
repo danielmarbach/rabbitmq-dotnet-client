@@ -235,6 +235,68 @@ namespace RabbitMQ.Client
                 cancellationToken);
 
         /// <summary>
+        /// (Extension method) Convenience overload of <see cref="IChannel.BasicPublishAsync{TProperties}(string, string, bool, TProperties, System.Buffers.ReadOnlySequence{byte}, CancellationToken)"/>
+        /// </summary>
+        /// <remarks>
+        /// The publication occurs with mandatory=false and empty BasicProperties
+        /// </remarks>
+        public static ValueTask BasicPublishAsync(this IChannel channel,
+            string exchange,
+            string routingKey,
+            ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default) =>
+            channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
+                mandatory: false, basicProperties: EmptyBasicProperty.Empty, body: body,
+                cancellationToken);
+
+        /// <summary>
+        /// (Extension method) Convenience overload of <see cref="IChannel.BasicPublishAsync{TProperties}(string, string, bool, TProperties, System.Buffers.ReadOnlySequence{byte}, CancellationToken)"/>
+        /// </summary>
+        /// <remarks>
+        /// The publication occurs with empty BasicProperties
+        /// </remarks>
+        public static ValueTask BasicPublishAsync(this IChannel channel,
+            string exchange,
+            string routingKey,
+            bool mandatory,
+            ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default) =>
+            channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
+                mandatory: mandatory, basicProperties: EmptyBasicProperty.Empty, body: body,
+                cancellationToken);
+
+        /// <summary>
+        /// (Extension method) Convenience overload of <see cref="IChannel.BasicPublishAsync{TProperties}(CachedString, CachedString, bool, TProperties, System.Buffers.ReadOnlySequence{byte}, CancellationToken)"/>
+        /// </summary>
+        /// <remarks>
+        /// The publication occurs with mandatory=false and empty BasicProperties
+        /// </remarks>
+        public static ValueTask BasicPublishAsync(this IChannel channel,
+            CachedString exchange,
+            CachedString routingKey,
+            ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default) =>
+            channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
+                mandatory: false, basicProperties: EmptyBasicProperty.Empty, body: body,
+                cancellationToken);
+
+        /// <summary>
+        /// (Extension method) Convenience overload of <see cref="IChannel.BasicPublishAsync{TProperties}(CachedString, CachedString, bool, TProperties, System.Buffers.ReadOnlySequence{byte}, CancellationToken)"/>
+        /// </summary>
+        /// <remarks>
+        /// The publication occurs with empty BasicProperties
+        /// </remarks>
+        public static ValueTask BasicPublishAsync(this IChannel channel,
+            CachedString exchange,
+            CachedString routingKey,
+            bool mandatory,
+            ReadOnlySequence<byte> body,
+            CancellationToken cancellationToken = default) =>
+            channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
+                mandatory: mandatory, basicProperties: EmptyBasicProperty.Empty, body: body,
+                cancellationToken);
+
+        /// <summary>
         /// Asynchronously declare a queue.
         /// </summary>
         public static Task<QueueDeclareOk> QueueDeclareAsync(this IChannel channel,
