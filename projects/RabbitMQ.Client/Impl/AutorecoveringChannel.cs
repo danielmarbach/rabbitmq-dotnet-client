@@ -30,7 +30,6 @@
 //---------------------------------------------------------------------------
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -353,11 +352,10 @@ namespace RabbitMQ.Client.Impl
         public ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey,
             bool mandatory,
             TProperties basicProperties,
-            IMemoryOwner<byte> body,
-            int bodyLength,
+            IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default)
             where TProperties : IReadOnlyBasicProperties, IAmqpHeader
-            => InnerChannel.BasicPublishAsync(exchange, routingKey, mandatory, basicProperties, body, bodyLength, cancellationToken);
+            => InnerChannel.BasicPublishAsync(exchange, routingKey, mandatory, basicProperties, body, cancellationToken);
 
         public ValueTask BasicPublishAsync<TProperties>(CachedString exchange, CachedString routingKey,
             bool mandatory,
@@ -370,11 +368,10 @@ namespace RabbitMQ.Client.Impl
         public ValueTask BasicPublishAsync<TProperties>(CachedString exchange, CachedString routingKey,
             bool mandatory,
             TProperties basicProperties,
-            IMemoryOwner<byte> body,
-            int bodyLength,
+            IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default)
             where TProperties : IReadOnlyBasicProperties, IAmqpHeader
-            => InnerChannel.BasicPublishAsync(exchange, routingKey, mandatory, basicProperties, body, bodyLength, cancellationToken);
+            => InnerChannel.BasicPublishAsync(exchange, routingKey, mandatory, basicProperties, body, cancellationToken);
 
         public Task BasicQosAsync(uint prefetchSize, ushort prefetchCount, bool global,
             CancellationToken cancellationToken)

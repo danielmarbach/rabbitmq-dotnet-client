@@ -30,7 +30,6 @@
 //---------------------------------------------------------------------------
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -55,12 +54,12 @@ namespace RabbitMQ.Client.Impl
         }
 
         public ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey,
-            bool mandatory, TProperties basicProperties, IMemoryOwner<byte> body, int bodyLength,
+            bool mandatory, TProperties basicProperties, IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default)
             where TProperties : IReadOnlyBasicProperties, IAmqpHeader
         {
             var cmd = new BasicPublish(exchange, routingKey, mandatory, default);
-            return BasicPublishCoreAsync(cmd, basicProperties, body, bodyLength, exchange, routingKey, cancellationToken);
+            return BasicPublishCoreAsync(cmd, basicProperties, body, exchange, routingKey, cancellationToken);
         }
 
         public ValueTask BasicPublishAsync<TProperties>(CachedString exchange, CachedString routingKey,
@@ -73,12 +72,12 @@ namespace RabbitMQ.Client.Impl
         }
 
         public ValueTask BasicPublishAsync<TProperties>(CachedString exchange, CachedString routingKey,
-            bool mandatory, TProperties basicProperties, IMemoryOwner<byte> body, int bodyLength,
+            bool mandatory, TProperties basicProperties, IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default)
             where TProperties : IReadOnlyBasicProperties, IAmqpHeader
         {
             var cmd = new BasicPublishMemory(exchange.Bytes, routingKey.Bytes, mandatory, default);
-            return BasicPublishCoreAsync(cmd, basicProperties, body, bodyLength, exchange.Value, routingKey.Value, cancellationToken);
+            return BasicPublishCoreAsync(cmd, basicProperties, body, exchange.Value, routingKey.Value, cancellationToken);
         }
 
         private async ValueTask BasicPublishCoreAsync<TMethod, TProperties>(
@@ -134,11 +133,13 @@ namespace RabbitMQ.Client.Impl
         }
 
         private async ValueTask BasicPublishCoreAsync<TMethod, TProperties>(
-            TMethod cmd, TProperties basicProperties, IMemoryOwner<byte> body, int bodyLength,
+            TMethod cmd, TProperties basicProperties, IReadOnlyMemoryOwner<byte> body,
             string? exchange, string? routingKey, CancellationToken cancellationToken)
             where TMethod : struct, IOutgoingAmqpMethod
             where TProperties : IReadOnlyBasicProperties, IAmqpHeader
         {
+            int bodyLength = body.Memory.Length;
+
             PublisherConfirmationInfo? publisherConfirmationInfo = null;
             RateLimitLease? lease =
                 await MaybeAcquirePublisherConfirmationLockAsync(cancellationToken)
@@ -159,12 +160,12 @@ namespace RabbitMQ.Client.Impl
                 BasicProperties? props = PopulateBasicPropertiesHeaders(basicProperties, sendActivity, publishSequenceNumber);
                 if (props is null)
                 {
-                    await ModelSendAsync(in cmd, in basicProperties, body, bodyLength, cancellationToken)
+                    await ModelSendAsync(in cmd, in basicProperties, body, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 else
                 {
-                    await ModelSendAsync(in cmd, in props, body, bodyLength, cancellationToken)
+                    await ModelSendAsync(in cmd, in props, body, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }

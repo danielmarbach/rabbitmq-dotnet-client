@@ -30,7 +30,6 @@
 //---------------------------------------------------------------------------
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -98,12 +97,11 @@ namespace RabbitMQ.Client
         public static ValueTask BasicPublishAsync<T>(this IChannel channel,
             PublicationAddress addr,
             T basicProperties,
-            IMemoryOwner<byte> body,
-            int bodyLength,
+            IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default)
             where T : IReadOnlyBasicProperties, IAmqpHeader =>
             channel.BasicPublishAsync(exchange: addr.ExchangeName, routingKey: addr.RoutingKey,
-                mandatory: false, basicProperties: basicProperties, body: body, bodyLength: bodyLength,
+                mandatory: false, basicProperties: basicProperties, body: body,
                 cancellationToken);
 
         /// <summary>
@@ -130,11 +128,10 @@ namespace RabbitMQ.Client
         public static ValueTask BasicPublishAsync(this IChannel channel,
             string exchange,
             string routingKey,
-            IMemoryOwner<byte> body,
-            int bodyLength,
+            IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default) =>
             channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
-                mandatory: false, basicProperties: EmptyBasicProperty.Empty, body: body, bodyLength: bodyLength,
+                mandatory: false, basicProperties: EmptyBasicProperty.Empty, body: body,
                 cancellationToken);
 
         /// <summary>
@@ -161,11 +158,10 @@ namespace RabbitMQ.Client
         public static ValueTask BasicPublishAsync(this IChannel channel,
             CachedString exchange,
             CachedString routingKey,
-            IMemoryOwner<byte> body,
-            int bodyLength,
+            IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default) =>
             channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
-                mandatory: false, basicProperties: EmptyBasicProperty.Empty, body: body, bodyLength: bodyLength,
+                mandatory: false, basicProperties: EmptyBasicProperty.Empty, body: body,
                 cancellationToken);
 
         /// <summary>
@@ -194,11 +190,10 @@ namespace RabbitMQ.Client
             string exchange,
             string routingKey,
             bool mandatory,
-            IMemoryOwner<byte> body,
-            int bodyLength,
+            IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default) =>
             channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
-                mandatory: mandatory, basicProperties: EmptyBasicProperty.Empty, body: body, bodyLength: bodyLength,
+                mandatory: mandatory, basicProperties: EmptyBasicProperty.Empty, body: body,
                 cancellationToken);
 
         /// <summary>
@@ -227,11 +222,10 @@ namespace RabbitMQ.Client
             CachedString exchange,
             CachedString routingKey,
             bool mandatory,
-            IMemoryOwner<byte> body,
-            int bodyLength,
+            IReadOnlyMemoryOwner<byte> body,
             CancellationToken cancellationToken = default) =>
             channel.BasicPublishAsync(exchange: exchange, routingKey: routingKey,
-                mandatory: mandatory, basicProperties: EmptyBasicProperty.Empty, body: body, bodyLength: bodyLength,
+                mandatory: mandatory, basicProperties: EmptyBasicProperty.Empty, body: body,
                 cancellationToken);
 
         /// <summary>

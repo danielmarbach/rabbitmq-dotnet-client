@@ -40,7 +40,8 @@ namespace RabbitMQ.Client
     {
         private IMemoryOwner<byte>? _methodAndHeader;
         private readonly int _methodAndHeaderLength;
-        private IMemoryOwner<byte>? _body;
+        private IDisposable? _bodyOwner;
+        private readonly ReadOnlyMemory<byte> _body;
         private readonly int _bodyLength;
         private readonly int _maxBodyPayloadBytes;
         private readonly ushort _channelNumber;
@@ -51,7 +52,8 @@ namespace RabbitMQ.Client
         {
             _methodAndHeader = methodAndHeader;
             _methodAndHeaderLength = methodAndHeaderLength;
-            _body = null;
+            _bodyOwner = null;
+            _body = ReadOnlyMemory<byte>.Empty;
             _bodyLength = 0;
             _channelNumber = 0;
             _maxBodyPayloadBytes = 0;
@@ -69,8 +71,27 @@ namespace RabbitMQ.Client
         {
             _methodAndHeader = methodAndHeader;
             _methodAndHeaderLength = methodAndHeaderLength;
-            _body = body;
+            _bodyOwner = body;
+            _body = body.Memory.Slice(0, bodyLength);
             _bodyLength = bodyLength;
+            _channelNumber = channelNumber;
+            _maxBodyPayloadBytes = maxBodyPayloadBytes;
+            Size = totalSize;
+        }
+
+        internal OutgoingFrame(
+            IMemoryOwner<byte> methodAndHeader,
+            int methodAndHeaderLength,
+            IReadOnlyMemoryOwner<byte> body,
+            ushort channelNumber,
+            int maxBodyPayloadBytes,
+            int totalSize)
+        {
+            _methodAndHeader = methodAndHeader;
+            _methodAndHeaderLength = methodAndHeaderLength;
+            _bodyOwner = body;
+            _body = body.Memory;
+            _bodyLength = _body.Length;
             _channelNumber = channelNumber;
             _maxBodyPayloadBytes = maxBodyPayloadBytes;
             Size = totalSize;
@@ -89,8 +110,7 @@ namespace RabbitMQ.Client
                 return;
             }
 
-            Debug.Assert(_body is not null);
-            ReadOnlySpan<byte> bodySpan = _body!.Memory.Span.Slice(0, _bodyLength);
+            ReadOnlySpan<byte> bodySpan = _body.Span;
             int remainingBodyBytes = bodySpan.Length;
             int bodyOffset = 0;
 
@@ -111,8 +131,9 @@ namespace RabbitMQ.Client
             {
                 memoryOwner.Dispose();
                 _methodAndHeader = default;
-                _body?.Dispose();
-                _body = null;
+                IDisposable? bodyOwner = _bodyOwner;
+                _bodyOwner = null;
+                bodyOwner?.Dispose();
             }
         }
     }

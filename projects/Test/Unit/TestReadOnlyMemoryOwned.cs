@@ -30,43 +30,61 @@
 //---------------------------------------------------------------------------
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
-using RabbitMQ.Client.Events;
-using RabbitMQ.Client.Framing;
+using System.Buffers;
+using RabbitMQ.Client;
+using Xunit;
 
-namespace RabbitMQ.Client.Impl
+namespace Test.Unit
 {
-    internal delegate Task CommandReceivedAction(IncomingCommand cmd, CancellationToken cancellationToken);
-
-    internal interface ISession
+    public class TestReadOnlyMemoryOwned
     {
-        ushort ChannelNumber { get; }
+        [Fact]
+        public void WrapsIMemoryOwnerAndUsesRequestedLength()
+        {
+            var inner = new TrackedMemoryOwner(5);
+            var sut = new ReadOnlyMemoryOwned<byte>(inner, 3);
 
-        ShutdownEventArgs? CloseReason { get; }
+            Assert.Equal(3, sut.Memory.Length);
 
-        CommandReceivedAction? CommandReceived { get; set; }
+            sut.Dispose();
 
-        Connection Connection { get; }
+            Assert.True(inner.Disposed);
+        }
 
-        bool IsOpen { get; }
+        [Fact]
+        public void DisposeCallbackWithStateIsInvokedOnlyOnce()
+        {
+            var state = new DisposableState();
+            var sut = new ReadOnlyMemoryOwned<byte, DisposableState>(new byte[] { 1, 2, 3 }, state, static s => s.DisposeCount++);
 
-        event AsyncEventHandler<ShutdownEventArgs> SessionShutdownAsync;
+            sut.Dispose();
+            sut.Dispose();
 
-        Task CloseAsync(ShutdownEventArgs reason, bool notify = true);
+            Assert.Equal(1, state.DisposeCount);
+        }
 
-        Task HandleFrameAsync(InboundFrame frame, CancellationToken cancellationToken);
+        private sealed class TrackedMemoryOwner : IMemoryOwner<byte>
+        {
+            private readonly byte[] _memory;
 
-        Task NotifyAsync(CancellationToken cancellationToken);
+            public TrackedMemoryOwner(int size)
+            {
+                _memory = new byte[size];
+            }
 
-        ValueTask TransmitAsync<T>(in T cmd, CancellationToken cancellationToken) where T : struct, IOutgoingAmqpMethod;
+            public Memory<byte> Memory => _memory;
 
-        ValueTask TransmitAsync<TMethod, THeader>(in TMethod cmd, in THeader header, ReadOnlyMemory<byte> body, CancellationToken cancellationToken)
-            where TMethod : struct, IOutgoingAmqpMethod
-            where THeader : IAmqpHeader;
+            public bool Disposed { get; private set; }
 
-        ValueTask TransmitAsync<TMethod, THeader>(in TMethod cmd, in THeader header, IReadOnlyMemoryOwner<byte> body, CancellationToken cancellationToken)
-            where TMethod : struct, IOutgoingAmqpMethod
-            where THeader : IAmqpHeader;
+            public void Dispose()
+            {
+                Disposed = true;
+            }
+        }
+
+        private sealed class DisposableState
+        {
+            public int DisposeCount { get; set; }
+        }
     }
 }

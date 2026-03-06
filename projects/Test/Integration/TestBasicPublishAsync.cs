@@ -100,20 +100,20 @@ namespace Test.Integration
             var body = new TrackedMemoryOwner(GetRandomBody(size));
 
             await _channel.BasicPublishAsync(string.Empty, q,
-                mandatory: true, body: body, body.Memory.Length);
+                mandatory: true, body: body);
 
             Assert.Equal((uint)1, await _channel.QueuePurgeAsync(q));
             Assert.True(body.Disposed);
         }
 
-        private class TrackedMemoryOwner : IMemoryOwner<byte>
+        private class TrackedMemoryOwner : IReadOnlyMemoryOwner<byte>
         {
             public TrackedMemoryOwner(byte[] content)
             {
                 Memory = content;
             }
 
-            public Memory<byte> Memory { get; }
+            public ReadOnlyMemory<byte> Memory { get; }
             public bool Disposed { get; private set; }
 
             public void Dispose()
